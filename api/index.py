@@ -2,10 +2,12 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from pydantic import BaseModel
+import httpx
+import decimal
 
 app = FastAPI(
-    title="TaskOn Verification API Demo",
-    description="A demo API for TaskOn task verification integration",
+    title="Exsat Verification API",
+    description="A API for TaskOn task verification integration",
     version="1.0.0",
 )
 
@@ -22,17 +24,6 @@ class VerificationResponse(BaseModel):
     result: dict = {"isValid": bool}
     error: Optional[str] = None
 
-DEMO_COMPLETED_TASKS = {
-    # Demo wallet addresses
-    "0xd5045deea369d64ab7efab41ad18b82eeabcdefg",
-    "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-    # Demo social accounts
-    "taskonxyz",
-    "1084460817220641111",  # Discord ID
-    "6881505111",  # Telegram ID
-    "demo@taskon.xyz"
-}
-
 @app.get(
     "/api/task/verification",
     response_model=VerificationResponse,
@@ -46,11 +37,26 @@ async def verify_task(
     # Convert address to lowercase for case-insensitive comparison
     address = address.lower()
     
-    # Demo implementation - check if address exists in demo completed tasks
-    is_valid = address in DEMO_COMPLETED_TASKS
-    
-    return VerificationResponse(result={"isValid": is_valid}, error=None)
+    # Obtain the token balance from the exsat network API
+    try:
+        api_url = f"https://scan.exsat.network/api?module=account&action=tokenbalance&contractaddress=0x8266f2fbc720012e5Ac038aD3dbb29d2d613c459&address={address}"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url)
+            data = response.json()
+            
+            if data["status"] == "1":
+                balance = decimal.Decimal(data["result"]) / decimal.Decimal(10**18)
+                is_valid = balance >= 1
+                return VerificationResponse(result={"isValid": is_valid}, error=None)
+            else:
+                return VerificationResponse(
+                    result={"isValid": False}, 
+                    error=f"API Error: {data.get('message', 'Unknown error')}"
+                )
+    except Exception as e:
+        return VerificationResponse(result={"isValid": False}, error=f"Error: {str(e)}")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to TaskOn Verification API Demo"}
+    return {"message": "Welcome to Exsat TaskOn Verification API"}
